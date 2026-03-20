@@ -87,6 +87,8 @@ def classify_and_structure(raw_input: str) -> dict:
         },
         timeout=30,
     )
+    if not response.ok:
+        log.error(f"Anthropic API error {response.status_code}: {response.text}")
     response.raise_for_status()
     text = response.json()["content"][0]["text"].strip()
     text = re.sub(r"^```json\s*", "", text)
