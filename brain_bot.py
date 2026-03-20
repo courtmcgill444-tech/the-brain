@@ -152,8 +152,8 @@ def write_to_dropbox(note: dict, content: str) -> bool:
 
 
 def transcribe_voice(file_id: str) -> str:
-    """Download voice note from Telegram and transcribe with Whisper via Claude."""
-    # Get file path
+    """Download voice note from Telegram and transcribe using OpenAI Whisper API."""
+    # Get file path from Telegram
     file_info = requests.get(f"{TELEGRAM_API}/getFile", params={"file_id": file_id}).json()
     file_path = file_info["result"]["file_path"]
     file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
@@ -161,41 +161,24 @@ def transcribe_voice(file_id: str) -> str:
     # Download audio
     audio_data = requests.get(file_url).content
 
-    # Use Anthropic's audio transcription
-    import base64
-    audio_b64 = base64.b64encode(audio_data).decode("utf-8")
+    # Send to OpenAI Whisper for transcription
+    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+    if not OPENAI_API_KEY:
+        log.error("OPENAI_API_KEY not set - cannot transcribe voice")
+        return None
 
     response = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        json={
-            "model": MODEL,
-            "max_tokens": 1000,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "audio/ogg",
-                            "data": audio_b64,
-                        }
-                    },
-                    {"type": "text", "text": "Please transcribe this voice note exactly as spoken."}
-                ]
-            }]
-        },
+        "https://api.openai.com/v1/audio/transcriptions",
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+        files={"file": ("voice.ogg", audio_data, "audio/ogg")},
+        data={"model": "whisper-1"},
         timeout=60,
     )
 
     if response.status_code == 200:
-        return response.json()["content"][0]["text"]
+        return response.json().get("text", "")
     else:
+        log.error(f"Whisper transcription failed: {response.text}")
         return None
 
 
